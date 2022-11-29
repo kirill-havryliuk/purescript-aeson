@@ -21,6 +21,7 @@ import Aeson
   , toObject
   , class EncodeAeson
   , class DecodeAeson
+  , JsonDecodeError(ParsingError)
   )
 import Effect.Aff (launchAff, Aff)
 import Control.Apply (lift2)
@@ -58,6 +59,10 @@ import Effect (Effect)
 suite :: TestPlanM Unit
 suite = do
   group "Aeson encode" do
+    test "Incorrect JSON" $ liftEffect do
+      let error = Left ParsingError :: Either JsonDecodeError Int
+      decodeJsonString "{" `shouldEqual` error
+
     test "Record" $ liftEffect do
       let
         expected = { a: 10 }
