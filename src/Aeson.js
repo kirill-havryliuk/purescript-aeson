@@ -2,7 +2,13 @@ var JSONbig = require('json-bigint');
 var bignumber = require("bignumber.js")
 
 exports.stringifyJsonBigInt = json => JSONbig.stringify(json);
-exports.parseJsonBigInt = jsonStr => JSONbig.parse(jsonStr);
+exports.parseJsonBigInt = maybeNothing => maybeJust => jsonStr => {
+    try {
+        return maybeJust(JSONbig.parse(jsonStr));
+    } catch (_) {
+        return maybeNothing;
+    }
+};
 
 exports.bigNumberFromString = bignumber.BigNumber;
 

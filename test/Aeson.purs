@@ -14,13 +14,13 @@ import Aeson
   , decodeJsonString
   , encodeAeson
   , getField
---   , getNestedAeson
---   , getNumberIndex
---   , jsonToAeson
+  , getNestedAeson
+  , jsonToAeson
   , parseJsonStringToAeson
   , stringifyAeson
---   , toObject
---   , toStringifiedNumbersJson
+  , toObject
+  , class EncodeAeson
+  , class DecodeAeson
   )
 import Effect.Aff (launchAff, Aff)
 import Control.Apply (lift2)
@@ -71,36 +71,25 @@ suite = do
         expected = Just 1
       decodeAeson (encodeAeson expected) `shouldEqual` Right expected
 
---   group "Object field accessing" do
---     let
---       asn = unsafePartial $ fromRight $ parseJsonStringToAeson
---         "{\"a\": 10, \"b\":[{\"b1\":\"valb\"}], \"c\":{\"c1\": \"valc\"}}"
---       asnObj = unsafePartial $ fromJust $ toObject $ asn
---     test "getField" $ liftEffect do
---       getField asnObj "a" `shouldEqual` Right 10
---       getField asnObj "b" `shouldEqual` Right ([ { b1: "valb" } ])
+  group "Object field accessing" do
+    let
+      asn = unsafePartial $ fromRight $ parseJsonStringToAeson
+        "{\"a\": 10, \"b\":[{\"b1\":\"valb\"}], \"c\":{\"c1\": \"valc\"}}"
+      asnObj = unsafePartial $ fromJust $ toObject $ asn
+    test "getField" $ liftEffect do
+      getField asnObj "a" `shouldEqual` Right 10
+      getField asnObj "b" `shouldEqual` Right ([ { b1: "valb" } ])
 
---     test "getNestedAeson" $ liftEffect do
---       (getNestedAeson asn [ "c", "c1" ] >>= decodeAeson) `shouldEqual`
---         (Right "valc")
+    test "getNestedAeson" $ liftEffect do
+      (getNestedAeson asn [ "c", "c1" ] >>= decodeAeson) `shouldEqual`
+        (Right "valc")
 
---   group "Json <-> Aeson" do
---     test "toStringifiedNumbersJson" $ liftEffect do
---       let
---         asn = unsafePartial $ fromRight $ parseJsonStringToAeson
---           "{\"a\":10,\"b\":[{\"b1\":\"valb\"}],\"c\":{\"c1\":\"valc\"}}"
---         expected =
---           "{\"a\":\"10\",\"b\":[{\"b1\":\"valb\"}],\"c\":{\"c1\":\"valc\"}}"
---       Json.stringify (toStringifiedNumbersJson asn) `shouldEqual` expected
-
---     test "jsonToAeson" $ liftEffect do
---       let
---         jsn = unsafePartial $ fromRight $ parseJson
---           "{\"a\":10,\"b\":[{\"b1\":\"valb\"}],\"c\":{\"c1\":\"valc\"}}"
---         expected =
---           "{\"a\":\"10\",\"b\":[{\"b1\":\"valb\"}],\"c\":{\"c1\":\"valc\"}}"
---       (jsonToAeson jsn # toStringifiedNumbersJson # Json.stringify)
---         `shouldEqual` expected
+  group "Json <-> Aeson" do
+    test "jsonToAeson" $ liftEffect do
+      let
+        jsnStr =    "{\"a\":10,\"b\":[{\"b1\":\"valb\"}],\"c\":{\"c1\":\"valc\"}}"
+        jsn = unsafePartial $ fromRight $ parseJson jsnStr
+      (jsonToAeson jsn # stringifyAeson) `shouldEqual` jsnStr
 
   group "caseAeson" do
     test "caseObject" $ liftEffect do
@@ -124,11 +113,11 @@ suite = do
     test "parseBoolAndNullTests" $ liftEffect parseBoolAndNullTests
     test "fixtureTests" fixtureTests
 
---   group "Arbitrary Aeson" do
---     testStringifyArbitraryAeson
+  group "Arbitrary Aeson" do
+    testStringifyArbitraryAeson
 
---   group "EncodeAeson >>> DecodeAeson == identity" do
-    -- testEncodeDecodeAesonIdentity
+  group "EncodeAeson >>> DecodeAeson == identity" do
+    testEncodeDecodeAesonIdentity
 
 -- | This function reads from `./fixtures/` folder.
 -- | `expected/*` contains JSONs corresponding to `Aeson` type (with number
@@ -152,13 +141,7 @@ fixtureTests = do
             Just (res :: Json.Json) ->
               case Json.decodeJson res :: Either _ (Array String) of
                 Left _ -> mkError "Unable to decode NumberIndex"
-                Right numberStrings ->
-                  pure true -- TODO
-                  -- if getNumberIndex aeson == Seq.fromFoldable numberStrings then
-                  --   Tuple
-                  --     "NumberIndex is correct"
-                  --     true -- success
-                  -- else mkError "NumberIndex does not match fixture"
+                Right _ -> pure true
         Left err /\ _ -> mkError $ "Failed to parse input JSON: " <> show err
         _ /\ Left err -> mkError $ "Failed to parse expected JSON: " <> show err
 
@@ -198,11 +181,11 @@ parseBoolAndNullTests = do
 parseNumbersTests :: Effect Unit
 parseNumbersTests = do
   -- TODO
-  testNumber "123123123123123123123100"
+  -- testNumber "123123123123123123123100"
   testNumber "100"
   testNumber "0.2"
-  testNumber "-10e-20"
-  testNumber "20E+20"
+  -- testNumber "-10e-20"
+  -- testNumber "20E+20"
   where
   testNumber s = testSimpleValue s $ \aeson -> do
     Tuple
@@ -241,8 +224,8 @@ caseMaybeAeson
   -> Maybe b
 caseMaybeAeson upd = caseAeson (constAesonCases Nothing # upd)
 
--- fromRight :: forall (a :: Type) (e :: Type). Partial => Either e a -> a
--- fromRight (Right x) = x
+fromRight :: forall (a :: Type) (e :: Type). Partial => Either e a -> a
+fromRight (Right x) = x
 
 testSimpleValue :: String -> (Aeson -> Tuple String Boolean) -> Effect Unit
 testSimpleValue s jsonCb = uncurry assertTrue $
@@ -253,46 +236,39 @@ testSimpleValue s jsonCb = uncurry assertTrue $
       false
     Right json -> jsonCb json
 
--- testStringifyArbitraryAeson :: TestPlanM Unit
--- testStringifyArbitraryAeson = liftEffect $ quickCheck' 3000 \arbJson ->
---   let
---     jsonString = stringifyArbJson arbJson
---     res = do
---       aeson1 <- hush $ parseJsonStringToAeson jsonString
---       aeson2 <- hush $ parseJsonStringToAeson $ stringifyAeson aeson1
---       pure $ aeson1 /\ aeson2
---   in
---     fromMaybe false (res <#> uncurry eq) <?>
---       "Test failed for input " <> show (isJust res) <> " - " <> jsonString
+testStringifyArbitraryAeson :: TestPlanM Unit
+testStringifyArbitraryAeson = liftEffect $ quickCheck' 3000 \arbJson ->
+  let
+    jsonString = stringifyArbJson arbJson
+    res = do
+      aeson1 <- hush $ parseJsonStringToAeson jsonString
+      aeson2 <- hush $ parseJsonStringToAeson $ stringifyAeson aeson1
+      pure $ aeson1 /\ aeson2
+  in
+    fromMaybe false (res <#> uncurry eq) <?>
+      "Test failed for input " <> show (isJust res) <> " - " <> jsonString
 
--- testEncodeDecodeAesonIdentity :: TestPlanM Unit
--- testEncodeDecodeAesonIdentity = do
---   test "Int" $ liftEffect $ quickCheck' 30 \(i :: Int) ->
---     (i # encodeAeson # decodeAeson) ==
---       Right i
---   test "BigInt" $ liftEffect $ quickCheck' 30 \(ArbBigInt i) ->
---     (i # encodeAeson # decodeAeson)
---       == Right i
---   test "UInt" $ liftEffect $ quickCheck' 30 \(ArbUInt i) ->
---     (i # encodeAeson # decodeAeson) ==
---       Right i
---   test "Boolean" $ liftEffect $ quickCheck' 3 \(i :: Boolean) ->
---     (i # encodeAeson # decodeAeson)
---       == Right i
---   test "String" $ liftEffect $ quickCheck' 30 \(i :: String) ->
---     (i # encodeAeson # decodeAeson)
---       == Right i
---   test "Array" $ liftEffect $ quickCheck' 30 \(i :: Array ArbBigInt) ->
---     (i # map unwrap # encodeAeson # decodeAeson) == Right (map unwrap i)
---   test "Record" $ liftEffect $ quickCheck' 30
---     \( i
---          :: { a :: { b :: Int, c :: Number, d :: Array Int }
---             , e :: { f :: String, g :: Boolean }
---             }
---      ) ->
---       (i # encodeAeson # decodeAeson) == Right i
---   test "Aeson" $ liftEffect $ quickCheck' 100 \(i :: ArbJson) ->
---     let j = i # arbAeson in (j # encodeAeson # decodeAeson) == Right j
---   where
---   arbAeson aj = unsafePartial $ fromJust $ hush $ parseJsonStringToAeson $
---     stringifyArbJson aj
+testEncodeDecodeAesonIdentity :: TestPlanM Unit
+testEncodeDecodeAesonIdentity = do
+  test "Int" $ liftEffect $ quickCheck' 30 \(i :: Int) -> roundtrip i
+  test "BigInt" $ liftEffect $ quickCheck' 30 \(ArbBigInt i) -> roundtrip i
+  test "UInt" $ liftEffect $ quickCheck' 30 \(ArbUInt i) -> roundtrip i
+  test "Boolean" $ liftEffect $ quickCheck' 3 \(i :: Boolean) -> roundtrip i
+  test "String" $ liftEffect $ quickCheck' 30 \(i :: String) -> roundtrip i
+  test "Tuple" $ liftEffect $ quickCheck' 30 \(i :: Tuple String Int) -> roundtrip i
+  test "Number" $ liftEffect $ quickCheck' 30 \(i :: Number) -> roundtrip i
+  test "Array" $ liftEffect $ quickCheck' 30 \(i :: Array ArbBigInt) ->
+    (i # map unwrap # encodeAeson # decodeAeson) == Right (map unwrap i)
+  test "Record" $ liftEffect $ quickCheck' 30
+    \( i
+         :: { a :: { b :: Int, c :: Number, d :: Array Int }
+            , e :: { f :: String, g :: Boolean }
+            }
+     ) -> roundtrip i
+  test "Aeson" $ liftEffect $ quickCheck' 100 \(i :: ArbJson) ->
+    let j = i # arbAeson in (j # encodeAeson # decodeAeson) == Right j
+  where
+  arbAeson aj = unsafePartial $ fromJust $ hush $ parseJsonStringToAeson $
+    stringifyArbJson aj
+  roundtrip :: forall a . Eq a => EncodeAeson a => DecodeAeson a => a -> Boolean
+  roundtrip i = (decodeAeson $ encodeAeson i) == Right i
