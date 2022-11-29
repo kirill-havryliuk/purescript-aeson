@@ -17,67 +17,66 @@
 -- | Known limitations: does not support Record decoding (no GDecodeJson-like
 -- | machinery). But it is possible to decode records manually, because
 -- | `getField` is implemented.
-module Aeson
-  ( (.:)
-  , (.:?)
-  , Aeson
-  , AesonCases
-  , AesonEncoder
-  , NumberIndex
-  , class EncodeAeson
-  , class GEncodeAeson
-  , class DecodeAeson
-  , class DecodeAesonField
-  , class GDecodeAeson
-  , bumpNumberIndexBy
-  , caseAeson
-  , caseAesonArray
-  , caseAesonBigInt
-  , caseAesonBoolean
-  , caseAesonNull
-  , caseAesonNumber
-  , caseAesonObject
-  , caseAesonString
-  , caseAesonUInt
-  , constAesonCases
-  , decodeAeson
-  , decodeAesonField
-  , decodeAesonViaJson
-  , decodeJsonString
-  , encodeAeson
-  , encodeAeson'
-  , encodeAesonViaJson
-  , gDecodeAeson
-  , gEncodeAeson
-  , useNextIndexIndex
-  , getCurrentNumberIndex
-  , getField
-  , getFieldOptional
-  , getFieldOptional'
-  , getNestedAeson
-  , getNumberIndex
-  , jsonToAeson
-  , parseJsonStringToAeson
-  , stringifyAeson
-  , toStringifiedNumbersJson
-  , isNull
-  , isBoolean
-  , isNumber
-  , isString
-  , isArray
-  , isObject
-  , toNull
-  , toBoolean
-  , toNumber
-  , toString
-  , toArray
-  , toObject
-  , fromString
-  , aesonNull
-  , encodeTraversable
-  , decodeTraversable
-  , module X
-  ) where
+module Aeson where
+  -- (.:)
+  -- , (.:?)
+  -- , Aeson
+  -- , AesonCases
+  -- , AesonEncoder
+  -- , NumberIndex
+  -- , class EncodeAeson
+  -- , class GEncodeAeson
+  -- , class DecodeAeson
+  -- , class DecodeAesonField
+  -- , class GDecodeAeson
+  -- , bumpNumberIndexBy
+  -- , caseAeson
+  -- , caseAesonArray
+  -- , caseAesonBigInt
+  -- , caseAesonBoolean
+  -- , caseAesonNull
+  -- , caseAesonNumber
+  -- , caseAesonObject
+  -- , caseAesonString
+  -- , caseAesonUInt
+  -- , constAesonCases
+  -- , decodeAeson
+  -- , decodeAesonField
+  -- , decodeAesonViaJson
+  -- , decodeJsonString
+  -- , encodeAeson
+  -- , encodeAeson'
+  -- , encodeAesonViaJson
+  -- , gDecodeAeson
+  -- , gEncodeAeson
+  -- , useNextIndexIndex
+  -- , getCurrentNumberIndex
+  -- , getField
+  -- , getFieldOptional
+  -- , getFieldOptional'
+  -- , getNestedAeson
+  -- , getNumberIndex
+  -- , jsonToAeson
+  -- , parseJsonStringToAeson
+  -- , stringifyAeson
+  -- , toStringifiedNumbersJson
+  -- , isNull
+  -- , isBoolean
+  -- , isNumber
+  -- , isString
+  -- , isArray
+  -- , isObject
+  -- , toNull
+  -- , toBoolean
+  -- , toNumber
+  -- , toString
+  -- , toArray
+  -- , toObject
+  -- , fromString
+  -- , aesonNull
+  -- , encodeTraversable
+  -- , decodeTraversable
+  -- , module X
 
 import Prelude
 
@@ -85,20 +84,20 @@ import Control.Alt ((<|>))
 import Control.Lazy (fix)
 import Control.Monad.RWS (modify_)
 import Control.Monad.State (State, evalState, get)
-import Data.Argonaut
-  ( class DecodeJson
-  , class EncodeJson
-  , Json
-  , JsonDecodeError(MissingValue, AtKey, TypeMismatch, UnexpectedValue)
-  , caseJson
-  , caseJsonObject
-  , decodeJson
-  , encodeJson
-  , fromArray
-  , fromObject
-  , jsonNull
-  , stringify
-  )
+-- import Data.Argonaut
+--   ( class DecodeJson
+--   , class EncodeJson
+--   , Json
+--   , JsonDecodeError(MissingValue, AtKey, TypeMismatch, UnexpectedValue)
+--   , caseJson
+--   , caseJsonObject
+--   , decodeJson
+--   , encodeJson
+--   , fromArray
+--   , fromObject
+--   , jsonNull
+--   , stringify
+--   )
 import Data.Argonaut
   ( JsonDecodeError
     ( TypeMismatch
@@ -141,13 +140,11 @@ import Prim.RowList as RL
 import Record as Record
 import Type.Prelude (Proxy(Proxy))
 import Untagged.Union (class InOneOf, type (|+|), asOneOf)
-
--- | A piece of JSON where all numbers are replaced with their indexes
-newtype AesonPatchedJson = AesonPatchedJson Json
+import Unsafe.Coerce (unsafeCoerce)
+import Data.Nullable (null)
 
 -- | A piece of JSON where all numbers are extracted into `NumberIndex`.
-newtype Aeson = Aeson
-  { patchedJson :: AesonPatchedJson, numberIndex :: NumberIndex }
+newtype Aeson = Aeson JsonBigInt
 
 instance Eq Aeson where
   eq a b = stringifyAeson a == stringifyAeson b
@@ -155,64 +152,61 @@ instance Eq Aeson where
 instance Show Aeson where
   show = stringifyAeson
 
--- | A list of numbers extracted from Json, as they appear in the payload.
-type NumberIndex = Seq String
+
+data JsonDecodeError = TypeMismatch String | AtKey String JsonDecodeError | MissingValue
+-- TODO
+
+derive instance Eq JsonDecodeError
+
+instance Show JsonDecodeError where
+  show x = "" -- TODO
 
 class DecodeAeson (a :: Type) where
   decodeAeson :: Aeson -> Either JsonDecodeError a
 
 -------- Parsing: String -> Aeson --------
 
-foreign import parseJsonExtractingIntegers
-  :: String
-  -> { patchedPayload :: String, numberIndex :: Array String }
+foreign import data JsonBigInt :: Type
+
+foreign import parseJsonBigInt :: String -> JsonBigInt
 
 parseJsonStringToAeson :: String -> Either JsonDecodeError Aeson
-parseJsonStringToAeson payload = do
-  let { patchedPayload, numberIndex } = parseJsonExtractingIntegers payload
-  patchedJson <- lmap (const MissingValue) $ AesonPatchedJson <$> jsonParser
-    patchedPayload
-  pure $ Aeson { numberIndex: Seq.fromFoldable numberIndex, patchedJson }
+parseJsonStringToAeson payload = Right $ Aeson $ parseJsonBigInt payload
 
--------- Stringifying: Aeson -> String
+-- -------- Stringifying: Aeson -> String
 
-foreign import stringifyAeson_ :: Array String -> AesonPatchedJson -> String
+foreign import stringifyJsonBigInt :: JsonBigInt -> String
 
 stringifyAeson :: Aeson -> String
-stringifyAeson (Aeson { patchedJson, numberIndex }) = stringifyAeson_
-  (fromFoldable numberIndex)
-  patchedJson
+stringifyAeson (Aeson json) = stringifyJsonBigInt json
 
--------- Json <-> Aeson --------
+-- -------- Json <-> Aeson --------
 
--- | Replaces indexes in the Aeson's payload with stringified
--- | numbers from numberIndex.
--- | Given original payload of: `{"a": 10}`
--- | The result will be an Json object representing: `{"a": "10"}`
-toStringifiedNumbersJson :: Aeson -> Json
-toStringifiedNumbersJson = fix \_ ->
-  caseAeson
-    { caseNull: const jsonNull
-    , caseBoolean: encodeBoolean
-    , caseNumber: encodeString
-    , caseString: encodeString
-    , caseArray: map toStringifiedNumbersJson >>> fromArray
-    , caseObject: map toStringifiedNumbersJson >>> fromObject
-    }
+-- -- | Replaces indexes in the Aeson's payload with stringified
+-- -- | numbers from numberIndex.
+-- -- | Given original payload of: `{"a": 10}`
+-- -- | The result will be an Json object representing: `{"a": "10"}`
+-- toStringifiedNumbersJson :: Aeson -> Json
+-- toStringifiedNumbersJson = fix \_ ->
+--   caseAeson
+--     { caseNull: const jsonNull
+--     , caseBoolean: encodeBoolean
+--     , caseNumber: encodeString
+--     , caseString: encodeString
+--     , caseArray: map toStringifiedNumbersJson >>> fromArray
+--     , caseObject: map toStringifiedNumbersJson >>> fromObject
+--     }
 
--- | Recodes Json to Aeson.
--- | NOTE. The operation is costly as its stringifies given Json
--- |       and reparses resulting string as Aeson.
-jsonToAeson :: Json -> Aeson
-jsonToAeson = stringify >>> decodeJsonString >>> fromRight shouldNotHappen
-  where
-  -- valid json should always decode without errors
-  shouldNotHappen = undefined
+-- -- | Recodes Json to Aeson.
+-- -- | NOTE. The operation is costly as its stringifies given Json
+-- -- |       and reparses resulting string as Aeson.
+-- jsonToAeson :: Json -> Aeson
+-- jsonToAeson = stringify >>> decodeJsonString >>> fromRight shouldNotHappen
+--   where
+--   -- valid json should always decode without errors
+--   shouldNotHappen = undefined
 
-getNumberIndex :: Aeson -> NumberIndex
-getNumberIndex (Aeson { numberIndex }) = numberIndex
-
--------- Aeson manipulation and field accessors --------
+-- -------- Aeson manipulation and field accessors --------
 
 getField
   :: forall (a :: Type)
@@ -236,79 +230,82 @@ getField aesonObject field = getField' decodeAeson aesonObject field
 
 infix 7 getField as .:
 
--- | Attempt to get the value for a given key on an `Object Aeson`.
--- |
--- | The result will be `Right Nothing` if the key and value are not present,
--- | but will fail if the key is present but the value cannot be converted to the right type.
--- |
--- | This function will treat `null` as a value and attempt to decode it into your desired type.
--- | If you would like to treat `null` values the same as absent values, use
--- | `getFieldOptional'` (`.:?`) instead.
-getFieldOptional
-  :: forall (a :: Type)
-   . DecodeAeson a
-  => Object Aeson
-  -> String
-  -> Either JsonDecodeError (Maybe a)
-getFieldOptional = getFieldOptional_ decodeAeson
-  where
-  getFieldOptional_
-    :: (Aeson -> Either JsonDecodeError a)
-    -> Object Aeson
-    -> String
-    -> Either JsonDecodeError (Maybe a)
-  getFieldOptional_ decoder obj str =
-    maybe (pure Nothing) (map Just <<< decode) (FO.lookup str obj)
-    where
-    decode = lmap (AtKey str) <<< decoder
+-- -- | Attempt to get the value for a given key on an `Object Aeson`.
+-- -- |
+-- -- | The result will be `Right Nothing` if the key and value are not present,
+-- -- | but will fail if the key is present but the value cannot be converted to the right type.
+-- -- |
+-- -- | This function will treat `null` as a value and attempt to decode it into your desired type.
+-- -- | If you would like to treat `null` values the same as absent values, use
+-- -- | `getFieldOptional'` (`.:?`) instead.
+-- getFieldOptional
+--   :: forall (a :: Type)
+--    . DecodeAeson a
+--   => Object Aeson
+--   -> String
+--   -> Either JsonDecodeError (Maybe a)
+-- getFieldOptional = getFieldOptional_ decodeAeson
+--   where
+--   getFieldOptional_
+--     :: (Aeson -> Either JsonDecodeError a)
+--     -> Object Aeson
+--     -> String
+--     -> Either JsonDecodeError (Maybe a)
+--   getFieldOptional_ decoder obj str =
+--     maybe (pure Nothing) (map Just <<< decode) (FO.lookup str obj)
+--     where
+--     decode = lmap (AtKey str) <<< decoder
 
-infix 7 getFieldOptional as .:!
+-- infix 7 getFieldOptional as .:!
 
--- | Attempt to get the value for a given key on an `Object Aeson`.
--- |
--- | The result will be `Right Nothing` if the key and value are not present,
--- | or if the key is present and the value is `null`.
--- |
--- | Use this accessor if the key and value are optional in your object.
--- | If the key and value are mandatory, use `getField` (`.:`) instead.
-getFieldOptional'
-  :: forall (a :: Type)
-   . DecodeAeson a
-  => Object Aeson
-  -> String
-  -> Either JsonDecodeError (Maybe a)
-getFieldOptional' = getFieldOptional'_ decodeAeson
-  where
-  getFieldOptional'_
-    :: (Aeson -> Either JsonDecodeError a)
-    -> Object Aeson
-    -> String
-    -> Either JsonDecodeError (Maybe a)
-  getFieldOptional'_ decoder obj str =
-    maybe (pure Nothing) decode (FO.lookup str obj)
-    where
-    decode aeson@(Aeson { patchedJson: AesonPatchedJson json }) =
-      if Argonaut.isNull json then
-        pure Nothing
-      else
-        Just <$> (lmap (AtKey str) <<< decoder) aeson
+-- -- | Attempt to get the value for a given key on an `Object Aeson`.
+-- -- |
+-- -- | The result will be `Right Nothing` if the key and value are not present,
+-- -- | or if the key is present and the value is `null`.
+-- -- |
+-- -- | Use this accessor if the key and value are optional in your object.
+-- -- | If the key and value are mandatory, use `getField` (`.:`) instead.
+-- getFieldOptional'
+--   :: forall (a :: Type)
+--    . DecodeAeson a
+--   => Object Aeson
+--   -> String
+--   -> Either JsonDecodeError (Maybe a)
+-- getFieldOptional' = getFieldOptional'_ decodeAeson
+--   where
+--   getFieldOptional'_
+--     :: (Aeson -> Either JsonDecodeError a)
+--     -> Object Aeson
+--     -> String
+--     -> Either JsonDecodeError (Maybe a)
+--   getFieldOptional'_ decoder obj str =
+--     maybe (pure Nothing) decode (FO.lookup str obj)
+--     where
+--     decode aeson@(Aeson { patchedJson: AesonPatchedJson json }) =
+--       if Argonaut.isNull json then
+--         pure Nothing
+--       else
+--         Just <$> (lmap (AtKey str) <<< decoder) aeson
 
-infix 7 getFieldOptional' as .:?
+-- infix 7 getFieldOptional' as .:?
 
--- | Returns an Aeson available under a sequence of keys in given Aeson.
--- | If not possible returns JsonDecodeError.
-getNestedAeson :: Aeson -> Array String -> Either JsonDecodeError Aeson
-getNestedAeson
-  asn@(Aeson { numberIndex, patchedJson: AesonPatchedJson pjson })
-  keys =
-  note (UnexpectedValue $ toStringifiedNumbersJson asn) $
-    mkAeson <$> (foldM lookup pjson keys :: Maybe Json)
-  where
-  lookup :: Json -> String -> Maybe Json
-  lookup j lbl = caseJsonObject Nothing (FO.lookup lbl) j
+-- -- | Returns an Aeson available under a sequence of keys in given Aeson.
+-- -- | If not possible returns JsonDecodeError.
+-- getNestedAeson :: Aeson -> Array String -> Either JsonDecodeError Aeson
+-- getNestedAeson
+--   asn@(Aeson { numberIndex, patchedJson: AesonPatchedJson pjson })
+--   keys =
+--   note (UnexpectedValue $ toStringifiedNumbersJson asn) $
+--     mkAeson <$> (foldM lookup pjson keys :: Maybe Json)
+--   where
+--   lookup :: Json -> String -> Maybe Json
+--   lookup j lbl = caseJsonObject Nothing (FO.lookup lbl) j
 
-  mkAeson :: Json -> Aeson
-  mkAeson json = Aeson { numberIndex, patchedJson: AesonPatchedJson json }
+--   mkAeson :: Json -> Aeson
+--   mkAeson json = Aeson { numberIndex, patchedJson: AesonPatchedJson json }
+
+-- From bignumber library
+foreign import data BigNumber :: Type
 
 -- | Utility abbrevation. See `caseAeson` for an example usage.
 type AesonCases a =
@@ -320,6 +317,12 @@ type AesonCases a =
   , caseObject :: Object Aeson -> a
   }
 
+foreign import caseJson ::
+  forall a. (Unit -> a) -> (Boolean -> a)
+    -> (String -> a) -> (String -> a)
+    -> (Array JsonBigInt -> a) -> (Object JsonBigInt -> a)
+    -> JsonBigInt -> a
+
 caseAeson
   :: forall (a :: Type)
    . AesonCases a
@@ -327,25 +330,8 @@ caseAeson
   -> a
 caseAeson
   { caseNull, caseBoolean, caseNumber, caseString, caseArray, caseObject }
-  (Aeson { numberIndex, patchedJson: AesonPatchedJson pJson }) = caseJson
-  caseNull
-  caseBoolean
-  (coerceNumber >>> unsafeSeqIndex numberIndex >>> caseNumber)
-  caseString
-  (map mkAeson >>> caseArray)
-  (map mkAeson >>> caseObject)
-  pJson
-  where
-  mkAeson :: Json -> Aeson
-  mkAeson json = Aeson { patchedJson: AesonPatchedJson json, numberIndex }
-
-  -- will never get index out of bounds
-  unsafeSeqIndex :: forall b. Seq b -> Int -> b
-  unsafeSeqIndex s ix = unsafePartial $ fromJust $ Seq.index ix s
-
-  -- will never encounter non int number
-  coerceNumber :: Number -> Int
-  coerceNumber = round
+  (Aeson json) =
+    caseJson caseNull caseBoolean caseNumber caseString ((map Aeson) >>> caseArray) ((map Aeson) >>> caseObject) json
 
 constAesonCases :: forall (a :: Type). a -> AesonCases a
 constAesonCases v =
@@ -407,9 +393,9 @@ isNull = isAesonType caseAesonNull
 isBoolean :: Aeson -> Boolean
 isBoolean = isAesonType caseAesonBoolean
 
--- | Check if the provided `Aeson` is a `Number`
-isNumber :: Aeson -> Boolean
-isNumber = isAesonType caseAesonNumber
+-- -- | Check if the provided `Aeson` is a `Number`
+-- isNumber :: Aeson -> Boolean
+-- isNumber = isAesonType caseAesonNumber
 
 -- | Check if the provided `Aeson` is a `String`
 isString :: Aeson -> Boolean
@@ -430,7 +416,7 @@ toAesonType
   -> Maybe a
 toAesonType = verbAesonType Nothing Just
 
--- | Convert `Aeson` to the `Unit` value if the `Aeson` is the null value
+-- | Convert `Aeson` to the ``Unit` value if the `Aeson` is the null value
 toNull :: Aeson -> Maybe Unit
 toNull = toAesonType caseAesonNull
 
@@ -455,41 +441,38 @@ toArray = toAesonType caseAesonArray
 toObject :: Aeson -> Maybe (Object Aeson)
 toObject = toAesonType caseAesonObject
 
--- | Construct the `Json` representation of a `String` value.
--- | Note that this function only produces `Json` containing a single piece of `String`
--- | data (similar to `fromBoolean`, `fromNumber`, etc.).
--- | This function does NOT convert the `String` encoding of a JSON value to `Json` - For that
--- | purpose, you'll need to use `jsonParser`.
-fromString :: String -> Aeson
-fromString str = Aeson
-  { patchedJson: AesonPatchedJson (Argonaut.fromString str), numberIndex: mempty }
+-- -- | Construct the `Json` representation of a `String` value.
+-- -- | Note that this function only produces `Json` containing a single piece of `String`
+-- -- | data (similar to `fromBoolean`, `fromNumber`, etc.).
+-- -- | This function does NOT convert the `String` encoding of a JSON value to `Json` - For that
+-- -- | purpose, you'll need to use `jsonParser`.
+-- fromString :: String -> Aeson
+-- fromString str = Aeson
+--   { patchedJson: AesonPatchedJson (Argonaut.fromString str), numberIndex: mempty }
 
 aesonNull :: Aeson
-aesonNull = Aeson
-  { patchedJson: AesonPatchedJson jsonNull, numberIndex: mempty }
+aesonNull = Aeson $ unsafeCoerce null -- TODO
 
--------- Decode helpers --------
+-- -------- Decode helpers --------
 
--- | Ignore numeric index and reuse Argonaut decoder.
-decodeAesonViaJson
-  :: forall (a :: Type). DecodeJson a => Aeson -> Either JsonDecodeError a
-decodeAesonViaJson (Aeson { patchedJson: AesonPatchedJson j }) = decodeJson j
+-- -- | Ignore numeric index and reuse Argonaut decoder.
+-- decodeAesonViaJson
+--   :: forall (a :: Type). DecodeJson a => Aeson -> Either JsonDecodeError a
+-- decodeAesonViaJson (Aeson { patchedJson: AesonPatchedJson j }) = decodeJson j
 
 -- | Decodes a value encoded as JSON via Aeson decoding algorithm.
 decodeJsonString
   :: forall (a :: Type). DecodeAeson a => String -> Either JsonDecodeError a
 decodeJsonString = parseJsonStringToAeson >=> decodeAeson
 
--------- DecodeAeson instances --------
+-- -------- DecodeAeson instances --------
 
 decodeNumber
   :: forall a. (String -> Maybe a) -> Aeson -> Either JsonDecodeError a
-decodeNumber parse aeson@(Aeson { numberIndex }) = do
-  -- Numbers are replaced by their index in the array.
-  ix <- decodeAesonViaJson aeson
-  numberStr <- note MissingValue (Seq.index ix numberIndex)
-  note (TypeMismatch $ "Couldn't parse to integral: " <> numberStr)
-    (parse numberStr)
+decodeNumber parse aeson =
+  caseAesonNumber typeError ((note (TypeMismatch "TODO")) <<< parse) aeson
+    where
+      typeError = Left $ TypeMismatch $ "Couldn't parse to integral: "  -- TODO <> numberStr
 
 instance DecodeAeson UInt where
   decodeAeson = decodeNumber UInt.fromString
@@ -500,14 +483,16 @@ instance DecodeAeson Int where
 instance DecodeAeson BigInt where
   decodeAeson = decodeNumber BigInt.fromString
 
-instance DecodeAeson Boolean where
-  decodeAeson = decodeAesonViaJson
-
-instance DecodeAeson String where
-  decodeAeson = decodeAesonViaJson
-
 instance DecodeAeson Number where
   decodeAeson = decodeNumber Number.fromString
+
+instance DecodeAeson Boolean where
+  decodeAeson aeson = caseAesonBoolean typeError Right aeson
+    where
+      typeError = Left $ TypeMismatch $ "Is not Boolean" -- TODO
+
+-- instance DecodeAeson String where
+--   decodeAeson = decodeAesonViaJson
 
 instance DecodeAeson Aeson where
   decodeAeson = pure
@@ -516,14 +501,14 @@ instance DecodeAeson a => DecodeAeson (Object a) where
   decodeAeson = caseAesonObject (Left (TypeMismatch "Expected Object"))
     (traverse decodeAeson)
 
-instance (DecodeAeson a, DecodeAeson b) => DecodeAeson (Tuple a b) where
-  decodeAeson = caseAesonArray (Left (TypeMismatch "Expected Array (Tuple)"))
-    \arr ->
-      case arr !! 0, arr !! 1, arr !! 2 of
-        Just a, Just b, Nothing ->
-          Tuple <$> decodeAeson a <*> decodeAeson b
-        _, _, _ ->
-          Left (TypeMismatch "Expected Array with length 2")
+-- instance (DecodeAeson a, DecodeAeson b) => DecodeAeson (Tuple a b) where
+--   decodeAeson = caseAesonArray (Left (TypeMismatch "Expected Array (Tuple)"))
+--     \arr ->
+--       case arr !! 0, arr !! 1, arr !! 2 of
+--         Just a, Just b, Nothing ->
+--           Tuple <$> decodeAeson a <*> decodeAeson b
+--         _, _, _ ->
+--           Left (TypeMismatch "Expected Array with length 2")
 
 instance
   ( GDecodeAeson row list
@@ -545,17 +530,17 @@ instance
     asOneOf <$> (decodeAeson j :: Either JsonDecodeError a)
       <|> asOneOf <$> (decodeAeson j :: Either JsonDecodeError b)
 
-instance DecodeAeson a => DecodeAeson (Array a) where
-  decodeAeson = decodeTraversable
+-- instance DecodeAeson a => DecodeAeson (Array a) where
+--   decodeAeson = decodeTraversable
 
-instance DecodeAeson a => DecodeAeson (L.List a) where
-  decodeAeson = decodeTraversable
+-- instance DecodeAeson a => DecodeAeson (L.List a) where
+--   decodeAeson = decodeTraversable
 
-instance DecodeAeson a => DecodeAeson (LL.List a) where
-  decodeAeson = map L.toUnfoldable <<< decodeTraversable
+-- instance DecodeAeson a => DecodeAeson (LL.List a) where
+--   decodeAeson = map L.toUnfoldable <<< decodeTraversable
 
-instance DecodeAeson a => DecodeAeson (Seq a) where
-  decodeAeson = map L.toUnfoldable <<< decodeTraversable
+-- instance DecodeAeson a => DecodeAeson (Seq a) where
+--   decodeAeson = map L.toUnfoldable <<< decodeTraversable
 
 instance DecodeAeson a => DecodeAeson (Maybe a) where
   decodeAeson aeson =
@@ -569,17 +554,17 @@ instance DecodeAeson a => DecodeAeson (Maybe a) where
     }
     aeson
 
-decodeTraversable
-  :: forall t a
-  .  Traversable t
-  => DecodeAeson a
-  => DecodeJson (t Json)
-  => Aeson
-  -> Either JsonDecodeError (t a)
-decodeTraversable (Aeson { numberIndex, patchedJson: AesonPatchedJson pJson }) = do
-    jsons :: t Json <- decodeJson pJson
-    for jsons \patchedJson -> do
-      decodeAeson (Aeson { patchedJson: AesonPatchedJson patchedJson, numberIndex })
+-- decodeTraversable
+--   :: forall t a
+--   .  Traversable t
+--   => DecodeAeson a
+--   => DecodeJson (t Json)
+--   => Aeson
+--   -> Either JsonDecodeError (t a)
+-- decodeTraversable (Aeson { numberIndex, patchedJson: AesonPatchedJson pJson }) = do
+--     jsons :: t Json <- decodeJson pJson
+--     for jsons \patchedJson -> do
+--       decodeAeson (Aeson { patchedJson: AesonPatchedJson patchedJson, numberIndex })
 
 class
   GDecodeAeson (row :: Row Type) (list :: RL.RowList Type)
@@ -627,179 +612,76 @@ else instance DecodeAeson a => DecodeAesonField a where
 
 -------- EncodeAeson --------
 
+foreign import bigNumberFromString :: String -> BigNumber
+
+-- unsafe
+
 class EncodeAeson (a :: Type) where
-  encodeAeson' :: a -> AesonEncoder Aeson
-
-encodeAeson :: forall a. EncodeAeson a => a -> Aeson
-encodeAeson = runEncoder <<< encodeAeson'
-
-runEncoder :: forall a. AesonEncoder a -> a
-runEncoder (AesonEncoder s) = evalState s 0
-
-newtype AesonEncoder a = AesonEncoder (State Int a)
-
-derive newtype instance Functor AesonEncoder
-derive newtype instance Apply AesonEncoder
-derive newtype instance Applicative AesonEncoder
-derive newtype instance Bind AesonEncoder
-derive newtype instance Monad AesonEncoder
-
-useNextIndexIndex :: AesonEncoder Int
-useNextIndexIndex = AesonEncoder (get <* modify_ ((+) 1))
-
-getCurrentNumberIndex :: AesonEncoder Int
-getCurrentNumberIndex = AesonEncoder get
-
-bumpNumberIndexBy :: Int -> AesonEncoder Unit
-bumpNumberIndexBy i = AesonEncoder (modify_ ((+) i))
-
-encodeAesonViaJson :: forall a. EncodeJson a => a -> AesonEncoder Aeson
-encodeAesonViaJson v = pure $ Aeson
-  { patchedJson: AesonPatchedJson $ encodeJson v, numberIndex: Seq.empty }
+  encodeAeson :: a -> Aeson
 
 instance EncodeAeson Int where
-  encodeAeson' i = do
-    ix <- useNextIndexIndex
-    pure $ Aeson
-      { patchedJson: AesonPatchedJson $ encodeJson ix
-      , numberIndex: Seq.singleton (show i)
-      }
+  encodeAeson i = Aeson $ unsafeCoerce i
 
 instance EncodeAeson BigInt where
-  encodeAeson' i = do
-    ix <- useNextIndexIndex
-    pure $ Aeson
-      { patchedJson: AesonPatchedJson $ encodeJson ix
-      , numberIndex: Seq.singleton (BigInt.toString i)
-      }
+  encodeAeson i = Aeson $ unsafeCoerce $ bigNumberFromString $ BigInt.toString i
 
-instance EncodeAeson UInt where
-  encodeAeson' i = do
-    ix <- useNextIndexIndex
-    pure $ Aeson
-      { patchedJson: AesonPatchedJson $ encodeJson ix
-      , numberIndex: Seq.singleton (UInt.toString i)
-      }
+-- instance EncodeAeson UInt where
+--   encodeAeson' i = do
+--     ix <- useNextIndexIndex
+--     pure $ Aeson
+--       { patchedJson: AesonPatchedJson $ encodeJson ix
+--       , numberIndex: Seq.singleton (UInt.toString i)
+--       }
 
-instance EncodeAeson Number where
-  encodeAeson' i = do
-    ix <- useNextIndexIndex
-    pure $ Aeson
-      { patchedJson: AesonPatchedJson $ encodeJson ix
-      , numberIndex: Seq.singleton (show i)
-      }
+-- instance EncodeAeson Number where
+--   encodeAeson' i = do
+--     ix <- useNextIndexIndex
+--     pure $ Aeson
+--       { patchedJson: AesonPatchedJson $ encodeJson ix
+--       , numberIndex: Seq.singleton (show i)
+--       }
 
 instance EncodeAeson String where
-  encodeAeson' = encodeAesonViaJson
+  encodeAeson x = Aeson $ unsafeCoerce x
 
-instance EncodeAeson Boolean where
-  encodeAeson' = encodeAesonViaJson
+-- instance EncodeAeson Boolean where
+--   encodeAeson' = encodeAesonViaJson
 
 instance EncodeAeson Aeson where
-  encodeAeson' (Aeson { patchedJson: AesonPatchedJson json, numberIndex }) = do
-    ix <- getCurrentNumberIndex
-    let
-      bumpIndices = fix $ \_ -> caseJson encodeUnit encodeBoolean encodeNumber
-        encodeString
-        (fromArray <<< map bumpIndices)
-        (fromObject <<< map bumpIndices)
-      encodeNumber n = encodeJson $ Int.toNumber ix + n
-    bumpNumberIndexBy (Seq.length numberIndex)
-    pure $
-      (Aeson { patchedJson: AesonPatchedJson (bumpIndices json), numberIndex })
+  encodeAeson = identity
 
 instance EncodeAeson a => EncodeAeson (Object a) where
-  encodeAeson' input = do
-    Tuple obj indices <-
-      foldr step (Tuple FO.empty Seq.empty) <$>
-      traverse (traverse encodeAeson') (FO.toUnfoldable input)
-    pure $ Aeson
-      { patchedJson: AesonPatchedJson (fromObject obj)
-      , numberIndex: fold indices
-      }
-    where
-    step
-      :: Tuple String Aeson
-      -> Tuple (Object Json) (Seq (Seq String))
-      -> Tuple (Object Json) (Seq (Seq String))
-    step
-      (Tuple k (Aeson { patchedJson: AesonPatchedJson json, numberIndex }))
-      (Tuple obj indices) =
-      Tuple (FO.insert k json obj) (Seq.cons numberIndex indices)
+  encodeAeson input = Aeson $ unsafeCoerce $ map encodeAeson input
 
 instance
   ( GEncodeAeson row list
   , RL.RowToList row list
   ) =>
   EncodeAeson (Record row) where
-  encodeAeson' rec = do
-    Tuple obj indices <-
-      foldr step (Tuple FO.empty Seq.empty) <$> traverse sequence
-        (FO.toUnfoldable $ gEncodeAeson rec (Proxy :: Proxy list))
-    pure $ Aeson
-      { patchedJson: AesonPatchedJson (fromObject obj)
-      , numberIndex: fold indices
-      }
-    where
-    step
-      :: Tuple String Aeson
-      -> Tuple (Object Json) (Seq (Seq String))
-      -> Tuple (Object Json) (Seq (Seq String))
-    step
-      (Tuple k (Aeson { patchedJson: AesonPatchedJson json, numberIndex }))
-      (Tuple obj indices) =
-      Tuple (FO.insert k json obj) (Seq.cons numberIndex indices)
-
-instance (EncodeAeson a, EncodeAeson b) => EncodeAeson (Tuple a b) where
-  encodeAeson' (Tuple a b) = encodeTraversable' [ encodeAeson a, encodeAeson b ]
+  encodeAeson rec = encodeAeson $ gEncodeAeson rec (Proxy :: Proxy list)
 
 instance EncodeAeson a => EncodeAeson (Array a) where
-  encodeAeson' = encodeTraversable'
+  encodeAeson x = Aeson $ unsafeCoerce $ map encodeAeson x
+
+instance (EncodeAeson a, EncodeAeson b) => EncodeAeson (Tuple a b) where
+  encodeAeson (Tuple a b) = Aeson $ unsafeCoerce [ encodeAeson a, encodeAeson b ]
 
 instance EncodeAeson a => EncodeAeson (L.List a) where
-  encodeAeson' = encodeTraversable'
+  encodeAeson = encodeAeson <<< fromFoldable
 
 instance EncodeAeson a => EncodeAeson (LL.List a) where
-  encodeAeson' = encodeTraversable'
+  encodeAeson = encodeAeson <<< fromFoldable
 
 instance EncodeAeson a => EncodeAeson (Seq a) where
-  encodeAeson' = encodeTraversable'
+  encodeAeson = encodeAeson <<< fromFoldable
 
 instance EncodeAeson a => EncodeAeson (Maybe a) where
-  encodeAeson' Nothing = pure aesonNull
-  encodeAeson' (Just a) = encodeAeson' a
-
-encodeTraversable
-  :: forall (t :: Type -> Type) (a :: Type)
-  .  Traversable t
-  => EncodeAeson a
-  => t a -> Aeson
-encodeTraversable = runEncoder <<< encodeTraversable'
-
-encodeTraversable'
-  :: forall (t :: Type -> Type) (a :: Type)
-  .  Traversable t
-  => EncodeAeson a
-  => t a -> AesonEncoder Aeson
-encodeTraversable' arr = do
-    Tuple jsonArr indices <- foldM step (Tuple Seq.empty Seq.empty) arr
-    pure $ Aeson
-      { patchedJson: AesonPatchedJson (fromArray $ fromFoldable jsonArr)
-      , numberIndex: fold indices
-      }
-    where
-    step
-      :: Tuple (Seq Json) (Seq (Seq String))
-      -> a
-      -> AesonEncoder (Tuple (Seq Json) (Seq (Seq String)))
-    step (Tuple arrJson indices) a = do
-      Aeson { patchedJson: AesonPatchedJson json, numberIndex } <- encodeAeson'
-        a
-      pure $ Tuple (Seq.snoc arrJson json) (Seq.snoc indices numberIndex)
+  encodeAeson Nothing = aesonNull
+  encodeAeson (Just a) = encodeAeson a
 
 class GEncodeAeson (row :: Row Type) (list :: RL.RowList Type) where
   gEncodeAeson
-    :: forall proxy. Record row -> proxy list -> FO.Object (AesonEncoder Aeson)
+    :: forall proxy. Record row -> proxy list -> FO.Object Aeson
 
 instance gEncodeAesonNil :: GEncodeAeson row RL.Nil where
   gEncodeAeson _ _ = FO.empty
@@ -815,5 +697,5 @@ instance gEncodeAesonCons ::
     let _field = Proxy :: Proxy field
     FO.insert
       (reflectSymbol _field)
-      (encodeAeson' $ Record.get _field row)
+      (encodeAeson $ Record.get _field row)
       (gEncodeAeson row (Proxy :: Proxy tail))

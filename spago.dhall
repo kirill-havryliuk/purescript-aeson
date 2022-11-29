@@ -31,6 +31,7 @@ You can edit this file as you like.
   , "node-path"
   , "nonempty"
   , "numbers"
+  , "nullable"
   , "partial"
   , "prelude"
   , "quickcheck"
@@ -44,6 +45,7 @@ You can edit this file as you like.
   , "typelevel-prelude"
   , "uint"
   , "untagged-union"
+  , "unsafe-coerce"
   ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs", "test/**/*.purs" ]
