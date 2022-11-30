@@ -1,22 +1,8 @@
--- | Argonaut can't decode long integers the way Aeson encodes them: they
--- | lose precision on the stage of `JSON.parse` call, which we can't really
--- | control. This module is a hacky solution allowing us to preserve long
--- | integers while decoding.
--- | The idea is that we process JSON-as-string in FFI, exctracting all numbers
--- | into a separate array named "index", where they are represented as strings,
--- | and place that index alongside the original json. We modify the original
--- | JSON such that it contains indices of original numbers in the array,
--- | instead of the actual numbers.
--- |
--- | E.g. from `{ "a": 42, "b": 24 }` we get
--- | `{ json: {"a": 0, "b": 1 }, index: [ "42", "24" ] }`.
--- |
--- | Then, in decoders for `Int` and `BigInt` we access that array to get the
--- | values back
--- |
--- | Known limitations: does not support Record decoding (no GDecodeJson-like
--- | machinery). But it is possible to decode records manually, because
--- | `getField` is implemented.
+-- | Using json-bigint library to parse JSON storing numbers using
+-- | BigNumber from bignumber.js. API and behaviour is intended to be close to
+-- | Aeson.
+-- | Using hack for stringify, see Aeson.js.
+
 module Aeson (
   (.:)
   , (.:?)
