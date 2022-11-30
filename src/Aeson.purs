@@ -70,36 +70,28 @@ module Aeson (
 import Prelude
 
 import Control.Alt ((<|>))
-import Control.Lazy (fix)
-import Control.Monad.RWS (modify_)
-import Control.Monad.State (State, evalState, get)
 import Data.Argonaut (Json, stringify) as Argonaut
-import Data.Argonaut.Encode.Encoders (encodeBoolean, encodeString, encodeUnit)
-import Data.Argonaut.Parser (jsonParser)
-import Data.Array (foldr, toUnfoldable, fromFoldable, (!!))
+import Data.Array (toUnfoldable, fromFoldable, (!!))
 import Data.Bifunctor (lmap)
 import Data.BigInt (BigInt)
 import Data.BigInt as BigInt
 import Data.Either (Either(Right, Left), fromRight, note)
-import Data.Foldable (fold, foldM)
-import Data.Int (round)
+import Data.Foldable (foldM)
 import Data.Int as Int
 import Data.List as L
 import Data.List.Lazy as LL
-import Data.Maybe (Maybe(Just, Nothing), fromJust, maybe)
-import Data.Number as Number
-import Data.Number.Format as Number
+import Data.Maybe (Maybe(Just, Nothing), maybe)
+import Data.Number (fromString) as Number
+import Data.Number.Format (toString) as Number
 import Data.Sequence (Seq)
-import Data.Sequence as Seq
 import Data.Symbol (class IsSymbol, reflectSymbol)
-import Data.Traversable (class Traversable, for, sequence, traverse)
+import Data.Traversable (traverse)
 import Data.Tuple (Tuple(Tuple))
 import Data.Typelevel.Undefined (undefined)
 import Data.UInt (UInt)
 import Data.UInt as UInt
 import Foreign.Object (Object)
 import Foreign.Object as FO
-import Partial.Unsafe (unsafePartial)
 import Prim.Row as Row
 import Prim.RowList as RL
 import Record as Record
@@ -122,7 +114,10 @@ data JsonDecodeError = TypeMismatch String | AtKey String JsonDecodeError | Miss
 derive instance Eq JsonDecodeError
 
 instance Show JsonDecodeError where
-  show x = "" -- TODO
+  show (TypeMismatch x) = "TypeMismatch " <> x
+  show (AtKey k x) = "AtKey " <> k <> " (" <> show x <> ")"
+  show MissingValue = "MissingValue"
+  show ParsingError = "ParsingError"
 
 class DecodeAeson (a :: Type) where
   decodeAeson :: Aeson -> Either JsonDecodeError a
@@ -241,9 +236,9 @@ infix 7 getFieldOptional' as .:?
 -- | Returns an Aeson available under a sequence of keys in given Aeson.
 -- | If not possible returns JsonDecodeError.
 getNestedAeson :: Aeson -> Array String -> Either JsonDecodeError Aeson
-getNestedAeson asn@(Aeson json) keys =
+getNestedAeson aeson keys =
   note (TypeMismatch "Expected nested object") $
-     foldM lookup asn keys
+     foldM lookup aeson keys
   where
   lookup :: Aeson -> String -> Maybe Aeson
   lookup j lbl = caseAesonObject Nothing (FO.lookup lbl) j

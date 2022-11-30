@@ -23,16 +23,13 @@ import Aeson
   , class DecodeAeson
   , JsonDecodeError(ParsingError)
   )
-import Effect.Aff (launchAff, Aff)
+import Effect.Aff (Aff)
 import Control.Apply (lift2)
-import Control.Monad.Cont (lift)
-import Data.Argonaut (encodeJson, parseJson)
 import Data.Argonaut as Json
 import Data.Array (head, zip, (!!))
 import Data.Either (Either(Right, Left), hush)
 import Data.Maybe (Maybe(Nothing, Just), fromJust, fromMaybe, isJust)
 import Data.Newtype (unwrap)
-import Data.Sequence as Seq
 import Data.Traversable (for_, traverse)
 import Data.Tuple (Tuple(Tuple), uncurry)
 import Data.Tuple.Nested ((/\))
@@ -93,7 +90,7 @@ suite = do
     test "jsonToAeson" $ liftEffect do
       let
         jsnStr =    "{\"a\":10,\"b\":[{\"b1\":\"valb\"}],\"c\":{\"c1\":\"valc\"}}"
-        jsn = unsafePartial $ fromRight $ parseJson jsnStr
+        jsn = unsafePartial $ fromRight $ Json.parseJson jsnStr
       (jsonToAeson jsn # stringifyAeson) `shouldEqual` jsnStr
 
   group "caseAeson" do
@@ -140,7 +137,7 @@ fixtureTests = do
       mkError msg = Tuple (msg <> ": " <> show inputPath) false
     in
       case parseJsonStringToAeson input /\ Json.jsonParser expected of
-        Right aeson /\ Right json ->
+        Right _aeson /\ Right json ->
           case Json.caseJsonArray Nothing (\arr -> arr !! 1) json of
             Nothing -> mkError "Failed to decode expected json"
             Just (res :: Json.Json) ->
