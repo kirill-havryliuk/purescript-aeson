@@ -1,5 +1,5 @@
 {
   "dependencies": {
-    "json-bigint": "^1.0.0"
+    "@cardanosolutions/json-bigint": "^1.0.0"
   }
 }
