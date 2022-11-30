@@ -182,16 +182,15 @@ parseBoolAndNullTests = do
 
 parseNumbersTests :: Effect Unit
 parseNumbersTests = do
-  -- TODO
-  -- testNumber "123123123123123123123100"
+  testNumber "123123123123123123123100"
   testNumber "100"
   testNumber "0.2"
-  -- testNumber "-10e-20"
-  -- testNumber "20E+20"
+  --- "-10e-20" will not work,
+  --- cuz we translate all numbers to non-exponent form
   where
   testNumber s = testSimpleValue s $ \aeson -> do
     Tuple
-      ("parseJsonStringifyNumbers changed read number: " <> stringifyAeson aeson <> " -> " <> s)
+      ("parseJsonStringifyNumbers changed read number: " <> s <> " -> " <> stringifyAeson aeson)
       (stringifyAeson aeson == s)
 
 parseStringTests :: Effect Unit
